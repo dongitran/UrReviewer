@@ -242,7 +242,11 @@ class PRDescription:
             # get the files prediction for each patch
             if not get_settings().pr_description.async_ai_calls:
                 results = []
+                wait_between_calls = get_settings().config.get('wait_between_calls', 1)
                 for i, patches in enumerate(patches_compressed_list):  # sync calls
+                    if i > 0 and wait_between_calls > 0:
+                        get_logger().info(f"Waiting {wait_between_calls} seconds before next AI call")
+                        await asyncio.sleep(wait_between_calls)
                     patches_diff = "\n".join(patches)
                     get_logger().debug(f"PR diff number {i + 1} for describe files")
                     prediction_files = await self._get_prediction(model, patches_diff,
