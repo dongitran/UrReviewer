@@ -30,7 +30,7 @@ jobs:
           target: github_app
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/UrReviewer:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/UrReviewer:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/urreviewer:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/urreviewer:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
