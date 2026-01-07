@@ -707,7 +707,11 @@ class PRCodeSuggestions:
                 self.prediction_list = prediction_list
             else:
                 prediction_list = []
-                for patches_diff, patches_diff_no_line_numbers in zip(self.patches_diff_list, self.patches_diff_list_no_line_numbers):
+                wait_between_calls = get_settings().config.get('wait_between_calls', 1)
+                for i, (patches_diff, patches_diff_no_line_numbers) in enumerate(zip(self.patches_diff_list, self.patches_diff_list_no_line_numbers)):
+                    if i > 0 and wait_between_calls > 0:
+                        get_logger().info(f"Waiting {wait_between_calls} seconds before next AI call")
+                        await asyncio.sleep(wait_between_calls)
                     prediction = await self._get_prediction(model, patches_diff, patches_diff_no_line_numbers)
                     prediction_list.append(prediction)
 

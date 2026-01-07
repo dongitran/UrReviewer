@@ -1,12 +1,7 @@
 name: Build-and-test
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -14,7 +9,7 @@ jobs:
 
     steps:
       - id: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - id: dockerx
         name: Setup Docker Buildx
