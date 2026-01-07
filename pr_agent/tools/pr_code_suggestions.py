@@ -407,6 +407,13 @@ class PRCodeSuggestions:
             # we are using a fallback model (should not happen on regular conditions)
             get_logger().warning(f"Using the same model for self-reflection as the one used for suggestions")
             model_reflect_with_reasoning = model
+        
+        # Add delay before reflection to avoid consecutive API calls
+        wait_between_calls = get_settings().config.get('wait_between_calls', 1)
+        if wait_between_calls > 0:
+            get_logger().info(f"Waiting {wait_between_calls} seconds before self-reflection AI call")
+            await asyncio.sleep(wait_between_calls)
+        
         response_reflect = await self.self_reflect_on_suggestions(data["code_suggestions"],
                                                                   patches_diff, model=model_reflect_with_reasoning)
         if response_reflect:
