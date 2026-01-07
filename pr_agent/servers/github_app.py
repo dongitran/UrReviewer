@@ -427,6 +427,8 @@ if get_settings().github_app.override_deployment_type:
 middleware = [Middleware(RawContextMiddleware)]
 app = FastAPI(middleware=middleware)
 app.include_router(router)
+print("UrReviewer is running...", flush=True)
+get_logger().info("UrReviewer is running...")
 
 
 def start():
