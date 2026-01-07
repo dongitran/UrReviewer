@@ -126,7 +126,7 @@ include_generated_by_header=true
 # large pr mode 💎
 enable_large_pr_handling=true
 max_ai_calls=4
-async_ai_calls=true
+async_ai_calls=false
 #custom_labels = ['Bug fix', 'Tests', 'Bug fix with tests', 'Enhancement', 'Documentation', 'Other']
 
 [pr_questions] # /ask #
