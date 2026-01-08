@@ -592,6 +592,13 @@ class PRCodeSuggestions:
             original_initial_line = None
             for file in self.diff_files:
                 if file.filename.strip() == relevant_file:
+                    if not file.head_file and hasattr(self.git_provider, 'get_pr_file_content'):
+                        get_logger().info(f"Fetching file content on-demand for dedenting: {file.filename}")
+                        try:
+                            file.head_file = self.git_provider.get_pr_file_content(file.filename, self.git_provider.pr.head.sha)
+                        except Exception as e:
+                            get_logger().warning(f"Failed to fetch file content on-demand for {file.filename}: {e}")
+
                     if file.head_file:
                         file_lines = file.head_file.splitlines()
                         if relevant_lines_start > len(file_lines):
