@@ -92,19 +92,33 @@ class PRCodeSuggestions:
         self.progress_response = None
 
     def _get_extra_instructions(self) -> str:
-        """Get extra instructions from environment variable or settings with logging."""
-        env_value = os.environ.get("PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS", "")
-        settings_value = get_settings().pr_code_suggestions.extra_instructions
+        """Get extra instructions from file (build-time), env var (fallback), or settings."""
+        # Priority 1: Read from file (baked into image at build time)
+        file_path = "/app/extra_instructions.md"
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    file_value = f.read().strip()
+                if file_value:
+                    get_logger().info(f"[ExtraInstructions] Using FILE value from {file_path} (first 100 chars): {file_value[:100]}...")
+                    return file_value
+        except Exception as e:
+            get_logger().warning(f"[ExtraInstructions] Failed to read from file: {e}")
         
+        # Priority 2: Environment variable (runtime override)
+        env_value = os.environ.get("PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS", "")
         if env_value:
             get_logger().info(f"[ExtraInstructions] Using ENV value (first 100 chars): {env_value[:100]}...")
             return env_value
-        elif settings_value:
+        
+        # Priority 3: Settings from configuration.toml
+        settings_value = get_settings().pr_code_suggestions.extra_instructions
+        if settings_value:
             get_logger().info(f"[ExtraInstructions] Using SETTINGS value (first 100 chars): {settings_value[:100]}...")
             return settings_value
-        else:
-            get_logger().warning("[ExtraInstructions] No extra instructions found in ENV or SETTINGS!")
-            return ""
+        
+        get_logger().warning("[ExtraInstructions] No extra instructions found in FILE, ENV, or SETTINGS!")
+        return ""
 
 
     async def run(self):
