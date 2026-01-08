@@ -66,7 +66,7 @@ class PRCodeSuggestions:
             "diff": "",  # empty diff for initial calculation
             "diff_no_line_numbers": "",  # empty diff for initial calculation
             "num_code_suggestions": num_code_suggestions,
-            "extra_instructions": os.environ.get("PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS", "") or get_settings().pr_code_suggestions.extra_instructions,
+            "extra_instructions": self._get_extra_instructions(),
             "commit_messages_str": self.git_provider.get_commit_messages(),
             "relevant_best_practices": "",
             "is_ai_metadata": get_settings().get("config.enable_ai_metadata", False),
@@ -90,6 +90,22 @@ class PRCodeSuggestions:
         self.progress = f"## Generating PR code suggestions\n\n"
         self.progress += f"""\nWork in progress ...<br>\n<img src="https://codium.ai/images/pr_agent/dual_ball_loading-crop.gif" width=48>"""
         self.progress_response = None
+
+    def _get_extra_instructions(self) -> str:
+        """Get extra instructions from environment variable or settings with logging."""
+        env_value = os.environ.get("PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS", "")
+        settings_value = get_settings().pr_code_suggestions.extra_instructions
+        
+        if env_value:
+            get_logger().info(f"[ExtraInstructions] Using ENV value (first 100 chars): {env_value[:100]}...")
+            return env_value
+        elif settings_value:
+            get_logger().info(f"[ExtraInstructions] Using SETTINGS value (first 100 chars): {settings_value[:100]}...")
+            return settings_value
+        else:
+            get_logger().warning("[ExtraInstructions] No extra instructions found in ENV or SETTINGS!")
+            return ""
+
 
     async def run(self):
         try:
