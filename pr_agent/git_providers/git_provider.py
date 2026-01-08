@@ -10,7 +10,7 @@ from pr_agent.algo.utils import Range, process_description
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
 
-MAX_FILES_ALLOWED_FULL = 100
+MAX_FILES_ALLOWED_FULL = 150
 
 def get_git_ssl_env() -> dict[str, str]:
     """
