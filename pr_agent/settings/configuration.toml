@@ -140,7 +140,7 @@ commitable_code_suggestions = false
 dual_publishing_score_threshold=-1 # -1 to disable, [0-10] to set the threshold (>=) for publishing a code suggestion both in a table and as commitable
 focus_only_on_problems=true
 #
-extra_instructions = "Environment file rules:\n- For .env, .env.test, .env.sandbox, .env.staging: Direct value assignments are allowed (e.g., KEY=value).\n- For .env.template: Values must follow the placeholder format (e.g., KEY=\\${KEY}) to avoid exposing actual secrets."
+extra_instructions = ""
 enable_help_text=false
 enable_chat_text=false
 persistent_comment=true

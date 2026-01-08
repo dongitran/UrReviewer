@@ -1,6 +1,7 @@
 import asyncio
 import copy
 import difflib
+import os
 import re
 import textwrap
 import traceback
@@ -65,7 +66,7 @@ class PRCodeSuggestions:
             "diff": "",  # empty diff for initial calculation
             "diff_no_line_numbers": "",  # empty diff for initial calculation
             "num_code_suggestions": num_code_suggestions,
-            "extra_instructions": get_settings().pr_code_suggestions.extra_instructions,
+            "extra_instructions": os.environ.get("PR_CODE_SUGGESTIONS__EXTRA_INSTRUCTIONS", "") or get_settings().pr_code_suggestions.extra_instructions,
             "commit_messages_str": self.git_provider.get_commit_messages(),
             "relevant_best_practices": "",
             "is_ai_metadata": get_settings().get("config.enable_ai_metadata", False),
