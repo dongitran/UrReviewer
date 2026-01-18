@@ -395,3 +395,7 @@ pr_commands = [
     "/review",
     "/improve",
 ]
+
+[logger_hub]
+enabled = false  # Set to true to enable AI request/response logging to Logger Hub
+collection = "urreviewer_ai_logs"  # MongoDB collection name for logs

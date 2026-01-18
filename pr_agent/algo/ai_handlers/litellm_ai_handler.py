@@ -1,4 +1,5 @@
 import os
+import time
 import litellm
 import openai
 import requests
@@ -9,6 +10,7 @@ from pr_agent.algo import CLAUDE_EXTENDED_THINKING_MODELS, NO_SUPPORT_TEMPERATUR
 from pr_agent.algo.ai_handlers.base_ai_handler import BaseAiHandler
 from pr_agent.algo.ai_handlers.litellm_helpers import _handle_streaming_response, MockResponse, _get_azure_ad_token, \
     _process_litellm_extra_body
+from pr_agent.algo.logger_hub_client import send_to_logger_hub, build_ai_log_data
 from pr_agent.algo.utils import ReasoningEffort, get_version
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
@@ -66,6 +68,8 @@ class LiteLLMAIHandler(BaseAiHandler):
             self.api_base = get_settings().openai.api_base
         if get_settings().get("ANTHROPIC.KEY", None):
             litellm.anthropic_key = get_settings().anthropic.key
+        if get_settings().get("ANTHROPIC.API_BASE", None):
+            os.environ["ANTHROPIC_API_BASE"] = get_settings().anthropic.api_base
         if get_settings().get("COHERE.KEY", None):
             litellm.cohere_key = get_settings().cohere.key
         if get_settings().get("GROQ.KEY", None):
@@ -265,6 +269,7 @@ class LiteLLMAIHandler(BaseAiHandler):
         stop=stop_after_attempt(MODEL_RETRIES),
     )
     async def chat_completion(self, model: str, system: str, user: str, temperature: float = 0.2, img_path: str = None):
+        start_time = time.time()
         try:
             resp, finish_reason = None, None
             deployment_id = self.deployment_id
@@ -283,9 +288,21 @@ class LiteLLMAIHandler(BaseAiHandler):
                     if r.status_code == 404:
                         error_msg = f"The image link is not [alive](img_path).\nPlease repost the original image as a comment, and send the question again with 'quote reply' (see [instructions](https://pr-agent-docs.codium.ai/tools/ask/#ask-on-images-using-the-pr-code-as-context))."
                         get_logger().error(error_msg)
+                        # Log image error to Logger Hub
+                        await self._send_to_logger_hub(
+                            model=model, system=system, user=user,
+                            status="error", error=f"ImageNotFound: {error_msg}",
+                            latency_ms=(time.time() - start_time) * 1000
+                        )
                         return f"{error_msg}", "error"
                 except Exception as e:
                     get_logger().error(f"Error fetching image: {img_path}", e)
+                    # Log image fetch error to Logger Hub
+                    await self._send_to_logger_hub(
+                        model=model, system=system, user=user,
+                        status="error", error=f"ImageFetchError: {e}",
+                        latency_ms=(time.time() - start_time) * 1000
+                    )
                     return f"Error fetching image: {img_path}", "error"
                 messages[1]["content"] = [{"type": "text", "text": messages[1]["content"]},
                                           {"type": "image_url", "image_url": {"url": img_path}}]
@@ -391,12 +408,30 @@ class LiteLLMAIHandler(BaseAiHandler):
 
         except openai.RateLimitError as e:
             get_logger().error(f"Rate limit error during LLM inference: {e}")
+            # Log error to Logger Hub
+            await self._send_to_logger_hub(
+                model=model, system=system, user=user,
+                status="error", error=f"RateLimitError: {e}",
+                latency_ms=(time.time() - start_time) * 1000
+            )
             raise
         except openai.APIError as e:
             get_logger().warning(f"Error during LLM inference: {e}")
+            # Log error to Logger Hub
+            await self._send_to_logger_hub(
+                model=model, system=system, user=user,
+                status="error", error=f"APIError: {e}",
+                latency_ms=(time.time() - start_time) * 1000
+            )
             raise
         except Exception as e:
             get_logger().warning(f"Unknown error during LLM inference: {e}")
+            # Log error to Logger Hub
+            await self._send_to_logger_hub(
+                model=model, system=system, user=user,
+                status="error", error=f"UnknownError: {e}",
+                latency_ms=(time.time() - start_time) * 1000
+            )
             raise openai.APIError from e
 
         get_logger().debug(f"\nAI response:\n{resp}")
@@ -405,11 +440,93 @@ class LiteLLMAIHandler(BaseAiHandler):
         response_log = self.prepare_logs(response_obj, system, user, resp, finish_reason)
         get_logger().debug("Full_response", artifact=response_log)
 
+        # Log success to Logger Hub
+        latency_ms = (time.time() - start_time) * 1000
+        usage = None
+        if hasattr(response_obj, 'usage') and response_obj.usage:
+            usage = {
+                "prompt_tokens": getattr(response_obj.usage, 'prompt_tokens', None),
+                "completion_tokens": getattr(response_obj.usage, 'completion_tokens', None),
+                "total_tokens": getattr(response_obj.usage, 'total_tokens', None),
+            }
+        await self._send_to_logger_hub(
+            model=model, system=system, user=user,
+            response=resp, finish_reason=finish_reason,
+            usage=usage, status="success", latency_ms=latency_ms
+        )
+
         # for CLI debugging
         if get_settings().config.verbosity_level >= 2:
             get_logger().info(f"\nAI response:\n{resp}")
 
         return resp, finish_reason
+
+    async def _send_to_logger_hub(
+        self,
+        model: str,
+        system: str,
+        user: str,
+        response: str = None,
+        finish_reason: str = None,
+        usage: dict = None,
+        status: str = "success",
+        error: str = None,
+        latency_ms: float = None
+    ):
+        """
+        Send AI request/response log to Logger Hub service.
+        Only sends if logger_hub.enabled is True in configuration.
+        """
+        try:
+            if not get_settings().get("LOGGER_HUB.ENABLED", False):
+                return
+            
+            collection = get_settings().get("LOGGER_HUB.COLLECTION", "urreviewer_ai_logs")
+            
+            # Extract PR URL and command from logger context (same pattern as add_litellm_callbacks)
+            pr_url = None
+            command = None
+            try:
+                captured_extra = []
+                
+                def capture_context(message):
+                    record = message.record
+                    log_entry = {}
+                    if record.get('extra', {}).get('command') is not None:
+                        log_entry['command'] = record['extra']['command']
+                    if record.get('extra', {}).get('pr_url') is not None:
+                        log_entry['pr_url'] = record['extra']['pr_url']
+                    captured_extra.append(log_entry)
+                
+                handler_id = get_logger().add(capture_context)
+                get_logger().debug("Capturing context for Logger Hub")
+                get_logger().remove(handler_id)
+                
+                if captured_extra:
+                    context = captured_extra[0]
+                    pr_url = context.get('pr_url')
+                    command = context.get('command')
+            except Exception:
+                pass  # Silently ignore context extraction errors
+            
+            log_data = build_ai_log_data(
+                model=model,
+                system_prompt=system,
+                user_prompt=user,
+                response=response,
+                finish_reason=finish_reason,
+                usage=usage,
+                status=status,
+                error=error,
+                latency_ms=latency_ms,
+                pr_url=pr_url,
+                command=command
+            )
+            
+            await send_to_logger_hub(collection, log_data)
+        except Exception as e:
+            # Never let logging errors affect the main flow
+            get_logger().debug(f"Logger Hub send failed: {e}")
 
     async def _get_completion(self, **kwargs):
         """

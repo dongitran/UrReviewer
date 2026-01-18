@@ -105,6 +105,7 @@ MAX_TOKENS = {
     'anthropic/claude-opus-4-20250514': 200000,
     'anthropic/claude-opus-4-1-20250805': 200000,
     'anthropic/claude-opus-4-5-20251101': 200000,
+    'anthropic/claude-opus-4-5-thinking': 200000,
     'anthropic/claude-3-5-sonnet-20240620': 100000,
     'anthropic/claude-3-5-sonnet-20241022': 100000,
     'anthropic/claude-3-7-sonnet-20250219': 200000,
@@ -112,6 +113,7 @@ MAX_TOKENS = {
     'anthropic/claude-sonnet-4-5-20250929': 200000,
     'claude-opus-4-1-20250805': 200000,
     'claude-opus-4-5-20251101': 200000,
+    'claude-opus-4-5-thinking': 200000,
     'claude-3-7-sonnet-20250219': 200000,
     'anthropic/claude-3-5-haiku-20241022': 100000,
     'anthropic/claude-haiku-4-5-20251001': 200000,
@@ -237,7 +239,11 @@ SUPPORT_REASONING_EFFORT_MODELS = [
 
 CLAUDE_EXTENDED_THINKING_MODELS = [
     "anthropic/claude-3-7-sonnet-20250219",
-    "claude-3-7-sonnet-20250219"
+    "claude-3-7-sonnet-20250219",
+    "anthropic/claude-opus-4-5-20251101",
+    "claude-opus-4-5-20251101",
+    "anthropic/claude-opus-4-5-thinking",
+    "claude-opus-4-5-thinking"
 ]
 
 # Models that require streaming mode
