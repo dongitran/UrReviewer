@@ -116,8 +116,27 @@ class LiteLLMAIHandler(BaseAiHandler):
             )
         # Google AI Studio
         # SEE https://docs.litellm.ai/docs/providers/gemini
-        if get_settings().get("GOOGLE_AI_STUDIO.GEMINI_API_KEY", None):
-          os.environ["GEMINI_API_KEY"] = get_settings().google_ai_studio.gemini_api_key
+        # Support multiple Gemini API keys for rotation (comma-separated)
+        self.gemini_api_keys = []
+        self.gemini_key_index = 0
+        
+        # First check for GEMINI_API_KEYS (comma-separated list for rotation)
+        gemini_keys_str = os.environ.get("GEMINI_API_KEYS", "")
+        if gemini_keys_str:
+            self.gemini_api_keys = [k.strip() for k in gemini_keys_str.split(",") if k.strip()]
+            if self.gemini_api_keys:
+                get_logger().info(f"Loaded {len(self.gemini_api_keys)} Gemini API keys for rotation")
+                # Set first key as default for compatibility
+                os.environ["GEMINI_API_KEY"] = self.gemini_api_keys[0]
+        
+        # Fallback to single key from settings or env
+        if not self.gemini_api_keys:
+            if get_settings().get("GOOGLE_AI_STUDIO.GEMINI_API_KEY", None):
+                single_key = get_settings().google_ai_studio.gemini_api_key
+                self.gemini_api_keys = [single_key]
+                os.environ["GEMINI_API_KEY"] = single_key
+            elif os.environ.get("GEMINI_API_KEY"):
+                self.gemini_api_keys = [os.environ.get("GEMINI_API_KEY")]
 
         # Support deepseek models
         if get_settings().get("DEEPSEEK.KEY", None):
@@ -186,6 +205,25 @@ class LiteLLMAIHandler(BaseAiHandler):
         else:
             response_log['main_pr_language'] = 'unknown'
         return response_log
+
+    def get_next_gemini_key(self) -> str:
+        """
+        Get the next Gemini API key using round-robin rotation.
+        Returns the next key in the list and advances the index.
+        """
+        if not self.gemini_api_keys:
+            return None
+        
+        key = self.gemini_api_keys[self.gemini_key_index]
+        # Advance to next key (round-robin)
+        self.gemini_key_index = (self.gemini_key_index + 1) % len(self.gemini_api_keys)
+        
+        if len(self.gemini_api_keys) > 1:
+            # Log key rotation (mask key for security)
+            masked_key = key[:10] + "..." + key[-4:] if len(key) > 14 else "***"
+            get_logger().debug(f"Using Gemini API key: {masked_key} (index: {(self.gemini_key_index - 1) % len(self.gemini_api_keys) + 1}/{len(self.gemini_api_keys)})")
+        
+        return key
 
     def _configure_claude_extended_thinking(self, model: str, kwargs: dict) -> dict:
         """
@@ -610,8 +648,16 @@ class LiteLLMAIHandler(BaseAiHandler):
     async def _get_completion(self, **kwargs):
         """
         Wrapper that automatically handles streaming for required models.
+        Also handles Gemini API key rotation for load balancing.
         """
         model = kwargs["model"]
+        
+        # Inject rotated Gemini API key for gemini/ models
+        if model.startswith("gemini/") and self.gemini_api_keys:
+            gemini_key = self.get_next_gemini_key()
+            if gemini_key:
+                kwargs["api_key"] = gemini_key
+        
         if model in self.streaming_required_models:
             kwargs["stream"] = True
             get_logger().info(f"Using streaming mode for model {model}")
