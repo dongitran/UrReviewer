@@ -25,13 +25,19 @@ ADDED_FILES_ = "Additional added files (insufficient token budget to process):\n
 
 OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD = 1500
 OUTPUT_BUFFER_TOKENS_HARD_THRESHOLD = 1000
-MAX_EXTRA_LINES = 10
+DEFAULT_MAX_EXTRA_LINES = 10
+
+
+def get_max_extra_lines() -> int:
+    """Get max extra lines from config, defaulting to 10."""
+    return get_settings().config.get("max_extra_lines", DEFAULT_MAX_EXTRA_LINES)
 
 
 def cap_and_log_extra_lines(value, direction) -> int:
-    if value > MAX_EXTRA_LINES:
-        get_logger().warning(f"patch_extra_lines_{direction} was {value}, capping to {MAX_EXTRA_LINES}")
-        return MAX_EXTRA_LINES
+    max_extra_lines = get_max_extra_lines()
+    if value > max_extra_lines:
+        get_logger().warning(f"patch_extra_lines_{direction} was {value}, capping to {max_extra_lines}")
+        return max_extra_lines
     return value
 
 

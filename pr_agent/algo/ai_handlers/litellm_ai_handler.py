@@ -11,12 +11,33 @@ from pr_agent.algo.ai_handlers.base_ai_handler import BaseAiHandler
 from pr_agent.algo.ai_handlers.litellm_helpers import _handle_streaming_response, MockResponse, _get_azure_ad_token, \
     _process_litellm_extra_body
 from pr_agent.algo.logger_hub_client import send_to_logger_hub, build_ai_log_data
-from pr_agent.algo.utils import ReasoningEffort, get_version
+from pr_agent.algo.utils import ReasoningEffort, get_version, clip_tokens
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
 import json
 
 MODEL_RETRIES = 2
+
+
+def _is_prompt_too_long_error(error) -> bool:
+    """
+    Check if error is 'prompt too long' from proxy.
+    Proxy returns: {"error": {...}, "id": "err_prompt_too_long", "type": "error"}
+    """
+    try:
+        error_str = str(error).lower()
+        if "prompt is too long" in error_str or "context limit" in error_str:
+            return True
+        # Check for the specific error ID from proxy
+        if "err_prompt_too_long" in error_str:
+            return True
+        # Check if it's a BadRequestError (400)
+        if hasattr(error, 'status_code') and error.status_code == 400:
+            if "prompt" in error_str and ("long" in error_str or "limit" in error_str):
+                return True
+    except Exception:
+        pass
+    return False
 
 
 class LiteLLMAIHandler(BaseAiHandler):
@@ -461,6 +482,54 @@ class LiteLLMAIHandler(BaseAiHandler):
 
         return resp, finish_reason
 
+    async def chat_completion_with_retry(
+        self, model: str, system: str, user: str, 
+        temperature: float = 0.2, img_path: str = None
+    ):
+        """
+        Wrapper for chat_completion with automatic retry for 'prompt too long' errors.
+        When a 400 error with 'prompt too long' is detected, reduces the user prompt
+        by a configurable factor and retries.
+        
+        Config options (via ENV or settings):
+        - prompt_too_long_retry_enabled: Enable/disable retry (default: True)
+        - prompt_too_long_max_retries: Max retry attempts (default: 3)
+        - prompt_too_long_token_reduction_factor: Factor to reduce tokens (default: 0.7)
+        """
+        retry_enabled = get_settings().config.get("prompt_too_long_retry_enabled", True)
+        max_retries = get_settings().config.get("prompt_too_long_max_retries", 3)
+        reduction_factor = get_settings().config.get("prompt_too_long_token_reduction_factor", 0.7)
+        
+        if not retry_enabled:
+            return await self.chat_completion(model, system, user, temperature, img_path)
+        
+        current_user = user
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                return await self.chat_completion(model, system, current_user, temperature, img_path)
+            except Exception as e:
+                last_error = e
+                if _is_prompt_too_long_error(e) and attempt < max_retries:
+                    # Calculate new token limit
+                    original_len = len(current_user)
+                    new_max_tokens = int(original_len * reduction_factor)
+                    current_user = clip_tokens(current_user, new_max_tokens)
+                    new_len = len(current_user)
+                    
+                    get_logger().warning(
+                        f"Prompt too long error detected. Retry {attempt + 1}/{max_retries}, "
+                        f"reduced user prompt from {original_len} to {new_len} chars "
+                        f"(factor: {reduction_factor})"
+                    )
+                    continue
+                # Not a prompt-too-long error or exhausted retries
+                raise
+        
+        # Should not reach here, but just in case
+        raise last_error if last_error else Exception("chat_completion_with_retry failed")
+
     async def _send_to_logger_hub(
         self,
         model: str,
@@ -521,6 +590,16 @@ class LiteLLMAIHandler(BaseAiHandler):
                 latency_ms=latency_ms,
                 pr_url=pr_url,
                 command=command
+            )
+            
+            # Debug log to verify data being sent
+            system_len = len(system) if system else 0
+            user_len = len(user) if user else 0
+            response_len = len(response) if response else 0
+            get_logger().debug(
+                f"Logger Hub: sending log - model={model}, status={status}, "
+                f"system_chars={system_len}, user_chars={user_len}, response_chars={response_len}, "
+                f"pr_url={pr_url}, command={command}"
             )
             
             await send_to_logger_hub(collection, log_data)

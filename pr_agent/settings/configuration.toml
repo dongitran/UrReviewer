@@ -74,6 +74,12 @@ ensure_ticket_compliance=false # Set to true to disable auto-approval of PRs if 
 enable_claude_extended_thinking = false # Set to true to enable extended thinking feature
 extended_thinking_budget_tokens = 2048
 extended_thinking_max_output_tokens = 4096
+# max extra context lines
+max_extra_lines = 20 # Maximum extra lines before/after patch hunks (can be overridden by ENV)
+# retry for prompt too long errors (400 status from proxy)
+prompt_too_long_retry_enabled = true
+prompt_too_long_max_retries = 3
+prompt_too_long_token_reduction_factor = 0.7 # reduce by 30% each retry
 
 
 [pr_reviewer] # /review #
